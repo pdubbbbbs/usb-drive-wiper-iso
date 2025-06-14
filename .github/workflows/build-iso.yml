@@ -1,0 +1,134 @@
+name: Build USB Wiper ISO
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y genisoimage isolinux syslinux-utils
+        
+    - name: Create boot directory structure
+      run: |
+        mkdir -p iso-build/boot/isolinux
+        mkdir -p iso-build/scripts
+        
+    - name: Copy isolinux files
+      run: |
+        cp /usr/lib/ISOLINUX/isolinux.bin iso-build/boot/isolinux/
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 iso-build/boot/isolinux/
+        cp /usr/lib/syslinux/modules/bios/libcom32.c32 iso-build/boot/isolinux/
+        cp /usr/lib/syslinux/modules/bios/libutil.c32 iso-build/boot/isolinux/
+        cp /usr/lib/syslinux/modules/bios/menu.c32 iso-build/boot/isolinux/
+        
+    - name: Create isolinux configuration
+      run: |
+        cat > iso-build/boot/isolinux/isolinux.cfg << 'EOF'
+        DEFAULT menu.c32
+        TIMEOUT 50
+        MENU TITLE USB Drive Wiper
+        
+        LABEL wiper
+        MENU LABEL USB Drive Wiper
+        KERNEL /boot/vmlinuz
+        APPEND initrd=/boot/initrd.img boot=live username=root init=/scripts/wipe.sh
+        
+        LABEL wipersafe
+        MENU LABEL USB Drive Wiper (Safe Mode)
+        KERNEL /boot/vmlinuz
+        APPEND initrd=/boot/initrd.img boot=live username=root init=/scripts/wipe.sh single
+        
+        LABEL shell
+        MENU LABEL Boot to Shell
+        KERNEL /boot/vmlinuz
+        APPEND initrd=/boot/initrd.img boot=live username=root
+        
+        LABEL reboot
+        MENU LABEL Reboot
+        COM32 reboot.c32
+        EOF
+        
+    - name: Download minimal Linux kernel and initrd
+      run: |
+        # Use Ubuntu's netboot files as a base
+        wget -O iso-build/boot/vmlinuz http://archive.ubuntu.com/ubuntu/dists/focal/main/installer-amd64/current/legacy-images/netboot/ubuntu-installer/amd64/linux
+        wget -O iso-build/boot/initrd.img http://archive.ubuntu.com/ubuntu/dists/focal/main/installer-amd64/current/legacy-images/netboot/ubuntu-installer/amd64/initrd.gz
+        
+    - name: Copy project files
+      run: |
+        cp -r scripts/ iso-build/
+        cp autorun.inf iso-build/
+        cp README.md iso-build/
+        cp LICENSE iso-build/
+        chmod +x iso-build/scripts/wipe.sh
+        
+    - name: Build ISO
+      run: |
+        genisoimage -r -V "USB_WIPER" -cache-inodes -J -l \
+          -b boot/isolinux/isolinux.bin -c boot/isolinux/boot.cat \
+          -no-emul-boot -boot-load-size 4 -boot-info-table \
+          -o usb-wiper.iso iso-build/
+          
+    - name: Make ISO hybrid (bootable from USB)
+      run: |
+        isohybrid usb-wiper.iso
+        
+    - name: Calculate checksums
+      run: |
+        sha256sum usb-wiper.iso > usb-wiper.iso.sha256
+        md5sum usb-wiper.iso > usb-wiper.iso.md5
+        
+    - name: Upload ISO as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: usb-wiper-iso
+        path: |
+          usb-wiper.iso
+          usb-wiper.iso.sha256
+          usb-wiper.iso.md5
+        retention-days: 30
+        
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          usb-wiper.iso
+          usb-wiper.iso.sha256
+          usb-wiper.iso.md5
+        body: |
+          ## USB Drive Wiper ISO - ${{ github.ref_name }}
+          
+          ⚠️ **WARNING: This tool will PERMANENTLY DELETE all data on USB drives!**
+          
+          ### Usage
+          1. Download the `usb-wiper.iso` file
+          2. Burn it to a CD/DVD or create a bootable USB drive
+          3. Boot from the CD/DVD/USB
+          4. Follow the on-screen prompts
+          5. Type 'YES' to confirm the wipe operation
+          
+          ### Checksums
+          - SHA256: See `usb-wiper.iso.sha256`
+          - MD5: See `usb-wiper.iso.md5`
+          
+          ### What's Changed
+          - Automated ISO building with GitHub Actions
+          - Improved boot configuration
+          - Added checksum verification files
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

@@ -35,14 +35,48 @@ Use with extreme caution. This action cannot be undone.
 
 ## Building the ISO
 
+### Quick Build
+```bash
+# Install dependencies (Ubuntu/Debian)
+sudo apt install genisoimage isolinux syslinux-utils
+
+# Build the ISO
+make build
+# or
+./build-iso.sh
+```
+
+### Using Makefile
+```bash
+# Show available commands
+make help
+
+# Install dependencies
+make install-deps
+
+# Build the ISO
+make build
+
+# Test the script (dry run)
+make test
+
+# Verify ISO contents
+make verify
+
+# Clean build artifacts
+make clean
+```
+
+### Manual Build
 ```bash
 # Make the script executable
 chmod +x scripts/wipe.sh
 
-# Create the ISO (requires genisoimage or similar)
+# Create the ISO (requires genisoimage)
 genisoimage -r -V "USB_WIPER" -cache-inodes -J -l \
-    -b boot/grub/grub.cfg -c boot/boot.cat \
-    -o usb-wiper.iso .
+    -b boot/isolinux/isolinux.bin -c boot/isolinux/boot.cat \
+    -no-emul-boot -boot-load-size 4 -boot-info-table \
+    -o usb-wiper.iso iso-build/
 ```
 
 ## Files Structure
