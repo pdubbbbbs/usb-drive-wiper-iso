@@ -1,0 +1,6 @@
+[autorun]
+open=scripts\wipe.sh
+icon=wipe.ico
+label=USB Drive Wiper
+action=Wipe USB Drives
+
